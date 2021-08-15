@@ -1,6 +1,6 @@
 <idea-plugin>
-    <id>com.github.tth05.minecraft-nbt-intellij-plugin</id>
-    <name>Minecraft NBT Support</name>
+    <id>com.github.tth05.minecraft-nbt-intellij-plugin-bedrock</id>
+    <name>Minecraft NBT Support (+Bedrock)</name>
     <vendor>tth05</vendor>
 
     <description><![CDATA[<p>Provides a proper way of editing NBT files inside of Intellij. Similar to the program NBT-Explorer</p>]]></description>

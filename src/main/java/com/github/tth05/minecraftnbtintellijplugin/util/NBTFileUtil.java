@@ -15,7 +15,10 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.TreeNode;
+import java.io.Closeable;
+import java.io.DataInput;
 import java.io.DataInputStream;
+import java.io.DataOutput;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -28,7 +31,7 @@ import java.util.zip.ZipException;
 public class NBTFileUtil {
 
 	/**
-	 * Uses the event to get the current project and file and then calls {@link #saveTreeToFile(Tree, VirtualFile, Project)}
+	 * Uses the event to get the current project and file and then calls {@link #saveTreeToFile(Tree, VirtualFile, Project, boolean, boolean)}
 	 * This method is only used for auto-saving and only called by actions
 	 *
 	 * @param event The event
@@ -49,7 +52,7 @@ public class NBTFileUtil {
 		if (!nbtFileEditorUI.isAutoSaveEnabled())
 			return;
 
-		saveTreeToFile(nbtFileEditorUI.getTree(), file, project);
+		saveTreeToFile(nbtFileEditorUI.getTree(), file, project, nbtFileEditorUI.isLittleEndian(), nbtFileEditorUI.isNetwork());
 	}
 
 	/**
@@ -59,10 +62,16 @@ public class NBTFileUtil {
 	 * @param file    The file to write the bytes to
 	 * @param project The current project to show the notification in
 	 */
-	public static void saveTreeToFile(Tree tree, VirtualFile file, Project project) {
+	public static void saveTreeToFile(Tree tree, VirtualFile file, Project project, boolean littleEndian, boolean network) {
 		ApplicationManager.getApplication().runWriteAction(() -> {
-			try (GZIPOutputStream gzipOutputStream = new GZIPOutputStream(file.getOutputStream(tree));
-			     DataOutputStream outputStream = new DataOutputStream(gzipOutputStream)) {
+			DataOutput outputStream = null;
+			try {
+				if (network)
+					outputStream = new NetworkDataOutputStream(file.getOutputStream(tree));
+				else if (littleEndian)
+					outputStream = new LittleEndianDataOutputStream(file.getOutputStream(tree));
+				else
+					outputStream = new DataOutputStream(new GZIPOutputStream(file.getOutputStream(tree)));
 
 				writeNodeToStream((NBTTagTreeNode) tree.getModel().getRoot(), outputStream, true);
 			} catch (IOException ex) {
@@ -70,12 +79,18 @@ public class NBTFileUtil {
 						"Error saving NBT file",
 						"Due to an unknown error the file could not be saved: " + ex.getMessage(),
 						NotificationType.WARNING).notify(project);
+			} finally {
+				if (outputStream != null)
+					try {
+						((Closeable) outputStream).close();
+					} catch (IOException ignored) {
+					}
 			}
 		});
 	}
 
 	private static void writeNodeToStream(NBTTagTreeNode node,
-	                                      DataOutputStream stream,
+	                                      DataOutput stream,
 	                                      boolean writeName) throws IOException {
 		if (writeName) {
 			stream.writeByte(node.getType().getId());
@@ -143,27 +158,50 @@ public class NBTFileUtil {
 	}
 
 	@Nullable
-	public static DefaultMutableTreeNode loadNBTFileIntoTree(VirtualFile file) {
-		try (DataInputStream data = uncompress(file.getInputStream())) {
+	public static DefaultMutableTreeNode loadNBTFileIntoTree(VirtualFile file, boolean littleEndian, boolean network) {
+		DataInput data = null;
+		try {
+			if (network)
+				data = new NetworkDataInputStream(file.getInputStream());
+			else if (littleEndian)
+				data = new LittleEndianDataInputStream(file.getInputStream());
+			else
+				data = uncompress(file.getInputStream());
+
 			//Get tag id
-			byte type = data.readByte();
+			int type = data.readUnsignedByte();
+			data.readUTF(); // Root tag name
 
-			//Root has to be a compound
-			if (type != 10)
-				return null;
+			switch (type) {
+				case 10:
+					NBTTagTreeNode root = new NBTTagTreeNode(NBTTagType.COMPOUND, "", null);
+					loadNBTDataOfCompound(root, data);
+					return root;
+				case 9:
+					int listType = data.readUnsignedByte();
+					int listSize = data.readInt();
+					NBTTagTreeNode listNode = new NBTTagTreeNode(NBTTagType.LIST, "", listSize + " elements");
+					for (int i = 0; i < listSize; i++)
+						listNode.add(createNode(listType, "[" + i + "]", data));
+					return listNode;
+			}
 
-			NBTTagTreeNode root = new NBTTagTreeNode(NBTTagType.COMPOUND, data.readUTF(), null);
-			loadNBTDataOfCompound(root, data);
-			return root;
+			return null;
 		} catch (IOException e) {
 			return null;
+		} finally {
+			if (data != null)
+				try {
+					((Closeable) data).close();
+				} catch (IOException ignored) {
+				}
 		}
 	}
 
-	private static void loadNBTDataOfCompound(DefaultMutableTreeNode root, DataInputStream data) throws IOException {
+	private static void loadNBTDataOfCompound(DefaultMutableTreeNode root, DataInput data) throws IOException {
 		while (true) {
 			//Get tag id
-			byte type = data.readByte();
+			int type = data.readUnsignedByte();
 
 			if (type != 0)
 				root.add(createNode(type, data.readUTF(), data));
@@ -172,7 +210,7 @@ public class NBTFileUtil {
 		}
 	}
 
-	private static NBTTagTreeNode createNode(byte type, String name, DataInputStream data) throws IOException {
+	private static NBTTagTreeNode createNode(int type, String name, DataInput data) throws IOException {
 		switch (type) {
 			case 1:
 				return new NBTTagTreeNode(NBTTagType.BYTE, name, data.readByte());
@@ -188,18 +226,18 @@ public class NBTFileUtil {
 				return new NBTTagTreeNode(NBTTagType.DOUBLE, name, data.readDouble());
 			case 7:
 				int byteArraySize = data.readInt();
-				NBTTagTreeNode byteArrayNode = new NBTTagTreeNode(NBTTagType.BYTE_ARRAY, name, byteArraySize);
+				NBTTagTreeNode byteArrayNode = new NBTTagTreeNode(NBTTagType.BYTE_ARRAY, name, byteArraySize + " elements");
 				for (int i = 0; i < byteArraySize; i++)
-					byteArrayNode.add(createNode((byte) 1, i + "", data));
+					byteArrayNode.add(createNode(1, "[" + i + "]", data));
 				return byteArrayNode;
 			case 8:
 				return new NBTTagTreeNode(NBTTagType.STRING, name, data.readUTF());
 			case 9:
-				byte listType = data.readByte();
+				int listType = data.readUnsignedByte();
 				int listSize = data.readInt();
-				NBTTagTreeNode listNode = new NBTTagTreeNode(NBTTagType.LIST, name, listSize);
+				NBTTagTreeNode listNode = new NBTTagTreeNode(NBTTagType.LIST, name, listSize + " elements");
 				for (int i = 0; i < listSize; i++)
-					listNode.add(createNode(listType, i + "", data));
+					listNode.add(createNode(listType, "[" + i + "]", data));
 				return listNode;
 			case 10:
 				NBTTagTreeNode compoundNode = new NBTTagTreeNode(NBTTagType.COMPOUND, name, null);
@@ -207,18 +245,18 @@ public class NBTFileUtil {
 				return compoundNode;
 			case 11:
 				int intArraySize = data.readInt();
-				NBTTagTreeNode intArrayNode = new NBTTagTreeNode(NBTTagType.INT_ARRAY, name, intArraySize);
+				NBTTagTreeNode intArrayNode = new NBTTagTreeNode(NBTTagType.INT_ARRAY, name, intArraySize + " elements");
 				for (int i = 0; i < intArraySize; i++)
-					intArrayNode.add(createNode((byte) 3, i + "", data));
+					intArrayNode.add(createNode(3, "[" + i + "]", data));
 				return intArrayNode;
 			case 12:
 				int longArraySize = data.readInt();
-				NBTTagTreeNode longArrayNode = new NBTTagTreeNode(NBTTagType.LONG_ARRAY, name, longArraySize);
+				NBTTagTreeNode longArrayNode = new NBTTagTreeNode(NBTTagType.LONG_ARRAY, name, longArraySize + " elements");
 				for (int i = 0; i < longArraySize; i++)
-					longArrayNode.add(createNode((byte) 4, i + "", data));
+					longArrayNode.add(createNode(4, "[" + i + "]", data));
 				return longArrayNode;
 			default:
-				throw new IOException("Unknown tag id found!");
+				throw new IOException("Unknown tag id found: " + type);
 		}
 	}
 

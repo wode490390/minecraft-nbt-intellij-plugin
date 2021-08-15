@@ -47,34 +47,52 @@ public class NBTFileEditorUI extends JPanel implements DataProvider {
 
 	private boolean autoSaveEnabled = true;
 
+	private boolean littleEndian;
+	private boolean network;
+
 	public NBTFileEditorUI(@NotNull VirtualFile file, @NotNull Project project) {
 		this.setLayout(new BorderLayout());
 
 		//Toolbar
 		JPanel northSection = new JPanel(new FlowLayout(FlowLayout.LEFT));
-		JButton saveButton = new JButton("Save", AllIcons.Actions.MenuSaveall);
-		saveButton.addMouseListener(new MouseAdapter() {
+
+		JButton loadButton = new JButton("Load", AllIcons.Actions.MenuSaveall);
+		loadButton.addMouseListener(new MouseAdapter() {
+			JBLabel errorText;
+
 			@Override
 			public void mouseReleased(MouseEvent e) {
-				NBTFileUtil.saveTreeToFile(NBTFileEditorUI.this.tree, file, project);
+				JBLabel errorText = NBTFileEditorUI.this.load(file, project, northSection);
+				if (this.errorText != null)
+					NBTFileEditorUI.this.remove(this.errorText);
+				this.errorText = errorText;
+				if (errorText == null)
+					northSection.remove(loadButton);
 			}
 		});
 
-		JBCheckBox autoSaveCheckbox = new JBCheckBox("Save On Change");
-		autoSaveCheckbox.setSelected(true);
-		autoSaveCheckbox.addItemListener(e -> autoSaveEnabled = e.getStateChange() == ItemEvent.SELECTED);
+		JBCheckBox leCheckbox = new JBCheckBox("Little Endian");
+		leCheckbox.addItemListener(e -> littleEndian = e.getStateChange() == ItemEvent.SELECTED);
 
-		northSection.add(saveButton);
-		northSection.add(autoSaveCheckbox);
+		JBCheckBox networkCheckbox = new JBCheckBox("Network");
+		networkCheckbox.addItemListener(e -> network = e.getStateChange() == ItemEvent.SELECTED);
 
+		northSection.add(loadButton);
+		northSection.add(leCheckbox);
+		northSection.add(networkCheckbox);
+
+		this.add(northSection, BorderLayout.NORTH);
+	}
+
+	private JBLabel load(@NotNull VirtualFile file, @NotNull Project project, @NotNull JPanel northSection) {
 		//Tree Section
-		DefaultMutableTreeNode root = NBTFileUtil.loadNBTFileIntoTree(file);
+		DefaultMutableTreeNode root = NBTFileUtil.loadNBTFileIntoTree(file, this.littleEndian, this.network);
 		if (root == null) {
 			JBLabel errorText = new JBLabel("Invalid NBT File!");
 			errorText.setForeground(JBColor.RED);
 			errorText.setHorizontalAlignment(SwingConstants.CENTER);
 			this.add(errorText, BorderLayout.CENTER);
-			return;
+			return errorText;
 		}
 
 		TreeModel model = new DefaultTreeModel(root);
@@ -127,8 +145,25 @@ public class NBTFileEditorUI extends JPanel implements DataProvider {
 			}
 		});
 
-		this.add(northSection, BorderLayout.NORTH);
 		this.add(new JBScrollPane(this.tree), BorderLayout.CENTER);
+
+		//Toolbar
+		JButton saveButton = new JButton("Save", AllIcons.Actions.MenuSaveall);
+		saveButton.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseReleased(MouseEvent e) {
+				NBTFileUtil.saveTreeToFile(NBTFileEditorUI.this.tree, file, project, littleEndian, network);
+			}
+		});
+
+		JBCheckBox autoSaveCheckbox = new JBCheckBox("Save On Change");
+		autoSaveCheckbox.setSelected(true);
+		autoSaveCheckbox.addItemListener(e -> autoSaveEnabled = e.getStateChange() == ItemEvent.SELECTED);
+
+		northSection.add(saveButton);
+		northSection.add(autoSaveCheckbox);
+
+		return null;
 	}
 
 	public Tree getTree() {
@@ -145,5 +180,13 @@ public class NBTFileEditorUI extends JPanel implements DataProvider {
 
 	public boolean isAutoSaveEnabled() {
 		return autoSaveEnabled;
+	}
+
+	public boolean isLittleEndian() {
+		return littleEndian;
+	}
+
+	public boolean isNetwork() {
+		return network;
 	}
 }
