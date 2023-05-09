@@ -1,6 +1,5 @@
 package com.github.tth05.minecraftnbtintellijplugin.util;
 
-import javax.annotation.Nonnull;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -27,7 +26,7 @@ public class NetworkDataOutputStream extends LittleEndianDataOutputStream {
     }
 
     @Override
-    public void writeUTF(@Nonnull String string) throws IOException {
+    public void writeUTF(String string) throws IOException {
         byte[] bytes = string.getBytes(StandardCharsets.UTF_8);
         VarInts.writeUnsignedInt(stream, bytes.length);
         this.write(bytes);

@@ -1,6 +1,5 @@
 package com.github.tth05.minecraftnbtintellijplugin.util;
 
-import javax.annotation.Nonnull;
 import java.io.DataInput;
 import java.io.DataInputStream;
 import java.io.FilterInputStream;
@@ -22,12 +21,12 @@ public class LittleEndianDataInputStream extends FilterInputStream implements Da
     }
 
     @Override
-    public void readFully(@Nonnull byte[] bytes) throws IOException {
+    public void readFully(byte[] bytes) throws IOException {
         this.stream.readFully(bytes);
     }
 
     @Override
-    public void readFully(@Nonnull byte[] bytes, int offset, int length) throws IOException {
+    public void readFully(byte[] bytes, int offset, int length) throws IOException {
         this.stream.readFully(bytes, offset, length);
     }
 
@@ -92,7 +91,6 @@ public class LittleEndianDataInputStream extends FilterInputStream implements Da
         return this.stream.readLine();
     }
 
-    @Nonnull
     @Override
     public String readUTF() throws IOException {
         byte[] bytes = new byte[this.readUnsignedShort()];

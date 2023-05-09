@@ -1,6 +1,5 @@
 package com.github.tth05.minecraftnbtintellijplugin.util;
 
-import javax.annotation.Nonnull;
 import java.io.DataOutput;
 import java.io.DataOutputStream;
 import java.io.FilterOutputStream;
@@ -22,12 +21,12 @@ public class LittleEndianDataOutputStream extends FilterOutputStream implements 
     }
 
     @Override
-    public void write(@Nonnull byte[] bytes) throws IOException {
+    public void write(byte[] bytes) throws IOException {
         this.stream.write(bytes);
     }
 
     @Override
-    public void write(@Nonnull byte[] bytes, int offset, int length) throws IOException {
+    public void write(byte[] bytes, int offset, int length) throws IOException {
         this.stream.write(bytes, offset, length);
     }
 
@@ -72,17 +71,17 @@ public class LittleEndianDataOutputStream extends FilterOutputStream implements 
     }
 
     @Override
-    public void writeBytes(@Nonnull String string) throws IOException {
+    public void writeBytes(String string) throws IOException {
         this.stream.writeBytes(string);
     }
 
     @Override
-    public void writeChars(@Nonnull String string) throws IOException {
+    public void writeChars(String string) throws IOException {
         this.stream.writeChars(string);
     }
 
     @Override
-    public void writeUTF(@Nonnull String string) throws IOException {
+    public void writeUTF(String string) throws IOException {
         byte[] bytes = string.getBytes(StandardCharsets.UTF_8);
         this.writeShort(bytes.length);
         this.write(bytes);
