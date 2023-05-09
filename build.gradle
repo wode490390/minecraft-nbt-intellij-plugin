@@ -1,12 +1,12 @@
 plugins {
     id 'java'
-    id 'org.jetbrains.intellij' version '0.7.2'
+    id 'org.jetbrains.intellij' version '1.10.0'
 }
 
 group 'com.github.tth05'
-version '1.5.2'
+version '1.5.4'
 
-sourceCompatibility = 1.8
+sourceCompatibility = 1.17
 
 repositories {
     mavenCentral()
@@ -14,21 +14,20 @@ repositories {
 
 // See https://github.com/JetBrains/gradle-intellij-plugin/
 intellij {
-    version 'LATEST-EAP-SNAPSHOT'
+    version = '2022.3'
 }
 
 buildSearchableOptions.enabled = false
 
 patchPluginXml {
-    changeNotes """
+    changeNotes = """
       <p>
-      - Update to newest Intellij version
+      - Update to work with 2022.3
       </p>
     """
-    untilBuild = null
 }
 
 publishPlugin {
-    token System.getProperty("token")
-    channels 'stable'
+    token = System.getProperty("token")
+    channels.add("stable")
 }
