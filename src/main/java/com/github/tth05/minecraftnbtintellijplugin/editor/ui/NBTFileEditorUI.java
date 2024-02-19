@@ -16,7 +16,9 @@ import com.intellij.ui.JBColor;
 import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBScrollPane;
+import com.intellij.ui.components.fields.IntegerField;
 import com.intellij.ui.treeStructure.Tree;
+import org.apache.commons.lang3.mutable.MutableInt;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -47,6 +49,8 @@ public class NBTFileEditorUI extends JPanel implements DataProvider {
 
 	private boolean littleEndian;
 	private boolean network;
+	private boolean levelDat;
+	private final MutableInt levelDatVersion = new MutableInt();
 
 	public NBTFileEditorUI(@NotNull VirtualFile file, @NotNull Project project) {
 		this.setLayout(new BorderLayout());
@@ -75,17 +79,23 @@ public class NBTFileEditorUI extends JPanel implements DataProvider {
 		JBCheckBox networkCheckbox = new JBCheckBox("Network");
 		networkCheckbox.addItemListener(e -> network = e.getStateChange() == ItemEvent.SELECTED);
 
+		JBCheckBox levelDatCheckbox = new JBCheckBox("level.dat");
+		levelDatCheckbox.addItemListener(e -> levelDat = e.getStateChange() == ItemEvent.SELECTED);
+
 		northSection.add(loadButton);
 		northSection.add(leCheckbox);
 		northSection.add(networkCheckbox);
+		northSection.add(levelDatCheckbox);
 
 		this.add(northSection, BorderLayout.NORTH);
 	}
 
 	private JBLabel load(@NotNull VirtualFile file, @NotNull Project project, @NotNull JPanel northSection) {
+		levelDatVersion.setValue(0);
 		//Tree Section
-		DefaultMutableTreeNode root = NBTFileUtil.loadNBTFileIntoTree(file, this.littleEndian, this.network);
+		DefaultMutableTreeNode root = NBTFileUtil.loadNBTFileIntoTree(file, this.littleEndian, this.network, this.levelDat ? this.levelDatVersion : null);
 		if (root == null) {
+			levelDatVersion.setValue(0);
 			JBLabel errorText = new JBLabel("Invalid NBT File!");
 			errorText.setForeground(JBColor.RED);
 			errorText.setHorizontalAlignment(SwingConstants.CENTER);
@@ -148,13 +158,21 @@ public class NBTFileEditorUI extends JPanel implements DataProvider {
 		saveButton.addMouseListener(new MouseAdapter() {
 			@Override
 			public void mouseReleased(MouseEvent e) {
-				NBTFileUtil.saveTreeToFile(NBTFileEditorUI.this.tree, file, project, littleEndian, network);
+				NBTFileUtil.saveTreeToFile(NBTFileEditorUI.this.tree, file, project, littleEndian, network, levelDat ? levelDatVersion.getValue() : null);
 			}
 		});
 
 		JBCheckBox autoSaveCheckbox = new JBCheckBox("Save On Change");
 		autoSaveCheckbox.setSelected(true);
 		autoSaveCheckbox.addItemListener(e -> autoSaveEnabled = e.getStateChange() == ItemEvent.SELECTED);
+
+		if (levelDat) {
+			IntegerField levelDatVersionField = new IntegerField("level.dat version", 0, Integer.MAX_VALUE);
+			levelDatVersionField.setToolTipText("level.dat version");
+			levelDatVersionField.setValue(levelDatVersion.getValue());
+			levelDatVersionField.setEditable(false);
+			northSection.add(levelDatVersionField);
+		}
 
 		northSection.add(saveButton);
 		northSection.add(autoSaveCheckbox);
@@ -184,5 +202,13 @@ public class NBTFileEditorUI extends JPanel implements DataProvider {
 
 	public boolean isNetwork() {
 		return network;
+	}
+
+	public boolean isLevelDat() {
+		return levelDat;
+	}
+
+	public MutableInt getLevelDatVersion() {
+		return levelDatVersion;
 	}
 }

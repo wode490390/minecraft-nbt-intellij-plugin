@@ -11,10 +11,12 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.ui.treeStructure.Tree;
+import org.apache.commons.lang3.mutable.MutableInt;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.TreeNode;
+import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.DataInput;
 import java.io.DataInputStream;
@@ -22,6 +24,7 @@ import java.io.DataOutput;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.Enumeration;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
@@ -31,7 +34,7 @@ import java.util.zip.ZipException;
 public class NBTFileUtil {
 
 	/**
-	 * Uses the event to get the current project and file and then calls {@link #saveTreeToFile(Tree, VirtualFile, Project, boolean, boolean)}
+	 * Uses the event to get the current project and file and then calls {@link #saveTreeToFile(Tree, VirtualFile, Project, boolean, boolean, Integer)}
 	 * This method is only used for auto-saving and only called by actions
 	 *
 	 * @param event The event
@@ -52,7 +55,7 @@ public class NBTFileUtil {
 		if (!nbtFileEditorUI.isAutoSaveEnabled())
 			return;
 
-		saveTreeToFile(nbtFileEditorUI.getTree(), file, project, nbtFileEditorUI.isLittleEndian(), nbtFileEditorUI.isNetwork());
+		saveTreeToFile(nbtFileEditorUI.getTree(), file, project, nbtFileEditorUI.isLittleEndian(), nbtFileEditorUI.isNetwork(), nbtFileEditorUI.isLevelDat() ? nbtFileEditorUI.getLevelDatVersion().getValue() : null);
 	}
 
 	/**
@@ -62,18 +65,38 @@ public class NBTFileUtil {
 	 * @param file    The file to write the bytes to
 	 * @param project The current project to show the notification in
 	 */
-	public static void saveTreeToFile(Tree tree, VirtualFile file, Project project, boolean littleEndian, boolean network) {
+	public static void saveTreeToFile(Tree tree, VirtualFile file, Project project, boolean littleEndian, boolean network, @Nullable Integer levelDatVersion) {
+		if (levelDatVersion != null) {
+			littleEndian = true;
+			network = false;
+		} else if (network) {
+			littleEndian = true;
+		}
+		boolean le = littleEndian;
+		boolean net = network;
+
 		ApplicationManager.getApplication().runWriteAction(() -> {
 			DataOutput outputStream = null;
 			try {
-				if (network)
-					outputStream = new NetworkDataOutputStream(file.getOutputStream(tree));
-				else if (littleEndian)
-					outputStream = new LittleEndianDataOutputStream(file.getOutputStream(tree));
+				ByteArrayOutputStream baos = new ByteArrayOutputStream();
+				if (net)
+					outputStream = new NetworkDataOutputStream(baos);
+				else if (le)
+					outputStream = new LittleEndianDataOutputStream(baos);
 				else
-					outputStream = new DataOutputStream(new GZIPOutputStream(file.getOutputStream(tree)));
+					outputStream = new DataOutputStream(new GZIPOutputStream(baos));
 
 				writeNodeToStream((NBTTagTreeNode) tree.getModel().getRoot(), outputStream, true);
+
+				try (OutputStream os = file.getOutputStream(tree)) {
+					if (levelDatVersion != null) {
+						LittleEndianDataOutputStream ledos = new LittleEndianDataOutputStream(os);
+						ledos.writeInt(levelDatVersion);
+						ledos.writeInt(baos.size());
+					}
+
+					os.write(baos.toByteArray());
+				}
 			} catch (IOException ex) {
 				new Notification("NBTSaveError",
 						"Error saving NBT file",
@@ -158,7 +181,14 @@ public class NBTFileUtil {
 	}
 
 	@Nullable
-	public static DefaultMutableTreeNode loadNBTFileIntoTree(VirtualFile file, boolean littleEndian, boolean network) {
+	public static DefaultMutableTreeNode loadNBTFileIntoTree(VirtualFile file, boolean littleEndian, boolean network, @Nullable MutableInt levelDatVersion) {
+		if (levelDatVersion != null) {
+			littleEndian = true;
+			network = false;
+		} else if (network) {
+			littleEndian = true;
+		}
+
 		DataInput data = null;
 		try {
 			if (network)
@@ -168,13 +198,18 @@ public class NBTFileUtil {
 			else
 				data = uncompress(file.getInputStream());
 
+			if (levelDatVersion != null) {
+				levelDatVersion.setValue(data.readInt());
+				int length = data.readInt();
+			}
+
 			//Get tag id
 			int type = data.readUnsignedByte();
-			data.readUTF(); // Root tag name
+			String name = data.readUTF(); // Root tag name
 
 			switch (type) {
 				case 10:
-					NBTTagTreeNode root = new NBTTagTreeNode(NBTTagType.COMPOUND, "", null);
+					NBTTagTreeNode root = new NBTTagTreeNode(NBTTagType.COMPOUND, name, null);
 					loadNBTDataOfCompound(root, data);
 					return root;
 				case 9:
