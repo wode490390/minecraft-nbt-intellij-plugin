@@ -1,33 +1,86 @@
 plugins {
-    id 'java'
-    id 'org.jetbrains.intellij' version '1.17.3'
+    id("java")
+    alias(libs.plugins.intelliJPlatform)
 }
 
-group 'com.github.tth05'
-version '1.5.4'
+group = providers.gradleProperty("pluginGroup").get()
+version = providers.gradleProperty("pluginVersion").get()
 
-sourceCompatibility = 1.17
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
 
 repositories {
     mavenCentral()
+
+    intellijPlatform {
+        defaultRepositories()
+    }
 }
 
-// See https://github.com/JetBrains/gradle-intellij-plugin/
-intellij {
-    version = '2024.1'
+dependencies {
+    intellijPlatform {
+        create(providers.gradleProperty("platformType"), providers.gradleProperty("platformVersion"))
+
+        instrumentationTools()
+        pluginVerifier()
+        zipSigner()
+    }
 }
 
-buildSearchableOptions.enabled = false
+intellijPlatform {
+    buildSearchableOptions = false
 
-patchPluginXml {
-    changeNotes = """
-      <p>
-      - Update to work with 2022.3
-      </p>
-    """
+    pluginConfiguration {
+        id = providers.gradleProperty("pluginId")
+        name = providers.gradleProperty("pluginName")
+        version = providers.gradleProperty("pluginVersion")
+
+        description = """
+            <p>
+            Provides a proper way of editing NBT files inside of Intellij. Similar to the program NBT-Explorer
+            </p>
+        """
+
+        changeNotes = """
+            <p>
+            - Update to work with 2022.3
+            </p>
+        """
+
+        vendor {
+            name = providers.gradleProperty("pluginVendor")
+            url = providers.gradleProperty("pluginRepositoryUrl")
+        }
+
+        ideaVersion {
+            untilBuild = provider {
+                null
+            }
+        }
+    }
+
+    signing {
+        certificateChain = providers.environmentVariable("CERTIFICATE_CHAIN")
+        privateKey = providers.environmentVariable("PRIVATE_KEY")
+        password = providers.environmentVariable("PRIVATE_KEY_PASSWORD")
+    }
+
+    publishing {
+        token = providers.environmentVariable("PUBLISH_TOKEN")
+    }
+
+    pluginVerification {
+        ides {
+            recommended()
+        }
+    }
 }
 
-publishPlugin {
-    token = System.getProperty("token")
-    channels.add("stable")
+tasks {
+    wrapper {
+        gradleVersion = providers.gradleProperty("gradleVersion").get()
+    }
 }
